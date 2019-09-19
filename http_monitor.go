@@ -22,7 +22,7 @@ const strftime = "_2/Jan/2006:15:04:05 -0700"
 var qpsThreshold = flag.Float64("qps", 10.0, "Average QPS threshold for high-traffic alerts")
 
 // Log record
-type Log struct {
+type logRecord struct {
 	IP         string
 	Identity   string
 	User       string
@@ -39,13 +39,17 @@ type Log struct {
 type stats struct {
 	httpResponseCodes map[string]int // Keeps counters for each HTTP response code
 	sectionCounts     map[string]int // Keeps counters for each seen section
-	logsInWindow      []*Log         // Stores last seen records in the high-traffic alerting window
+	logsInWindow      []*logRecord   // Stores last seen records in the high-traffic alerting window
 	alerting          bool           // Currently alerting?
 }
 
 // Regular expression for matching (and parsing) W3C-formatted access logs
-var logLineRegExp = regexp.MustCompile(`([^ ]+) (-) ([0-9A-Za-z-]+) ` +
-	// Timestamp
+var logLineRegExp = regexp.MustCompile(`([^ ]+) ` +
+	// Identity
+	`(-) ` +
+	// User
+	`([0-9A-Za-z-]+) ` +
+	// User
 	`\[(\d{2}/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/\d{4}:\d{2}:\d{2}:\d{2} [+-]\d{4})\]` +
 	// Methpd
 	` \"(GET|POST|PUT|HEAD|DELETE|OPTIONS) ` +
@@ -61,7 +65,7 @@ var logLineRegExp = regexp.MustCompile(`([^ ]+) (-) ([0-9A-Za-z-]+) ` +
 	`([0-9-]+)`)
 
 // Parse a W3C-formatted access log
-func parseLogLine(s string) (*Log, error) {
+func parseLogLine(s string) (*logRecord, error) {
 	var ts time.Time
 	var err error
 	var statusCode int
@@ -84,7 +88,7 @@ func parseLogLine(s string) (*Log, error) {
 		size = 0
 	}
 
-	return &Log{
+	return &logRecord{
 		IP:         matched[1],
 		Identity:   matched[2],
 		User:       matched[3],
@@ -106,7 +110,7 @@ func (s *stats) getDelta() float64 {
 }
 
 // Update stats used to trigger high-traffic alerting
-func (s *stats) updateAlerting(log *Log) {
+func (s *stats) updateAlerting(log *logRecord) {
 	s.logsInWindow = append(s.logsInWindow, log)
 
 	for len(s.logsInWindow) > 0 && s.getDelta() > 120.0 {
@@ -120,7 +124,7 @@ func (s *stats) updateAlerting(log *Log) {
 }
 
 // Update stats
-func (s *stats) updateStats(log *Log) {
+func (s *stats) updateStats(log *logRecord) {
 	// Generate a 1XX, 2XX, 3XX, 4XX or 5XX string from the response code
 	responseCode := fmt.Sprintf("%d", log.StatusCode)
 	responseCode = fmt.Sprintf("%cXX", responseCode[0])
