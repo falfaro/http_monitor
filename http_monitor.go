@@ -118,6 +118,8 @@ func (s *stats) getDelta() float64 {
 func (s *stats) updateAlerting(log *logRecord) {
 	s.logsInWindow = append(s.logsInWindow, log)
 
+	// Pop log records from the beginning of the window until the size of
+	// window is less or equal to 2 minutes (120 seconds)
 	for len(s.logsInWindow) > 0 && s.getDelta() > 120.0 {
 		s.logsInWindow = s.logsInWindow[1:]
 	}
