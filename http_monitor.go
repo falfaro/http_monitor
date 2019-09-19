@@ -25,6 +25,9 @@ var qpsThreshold = flag.Float64("qps", 10.0, "Average QPS threshold for high-tra
 // Command-line flag to override N when printing top(N) sections
 var topN = flag.Int("top", 5, "Dump top N sections")
 
+// Command-line flag to override access log filename
+var fileName = flag.String("filename", "access.log", "Pathname to the access log file")
+
 // Log record
 type logRecord struct {
 	IP         string
@@ -218,19 +221,17 @@ func main() {
 		},
 	}
 
-	var mutex = &sync.Mutex{}
+	mutex := &sync.Mutex{}
 
-	t, err := tail.TailFile("access.log", tail.Config{Follow: true})
-	if err != nil {
-		panic(err)
-	}
-
+	// Gorutine that periodically dumps stats to standard output, as well as
+	// signaling when a high-traffic condition is triggered or abandoned
 	go func() {
 		alerting := s.alerting
 		for {
 			mutex.Lock()
 
 			s.dumpStats()
+
 			// Display changes in high-traffic alerting
 			if alerting && !s.alerting {
 				fmt.Printf("High-traffic alerting not firing anymore\n")
@@ -246,6 +247,10 @@ func main() {
 	}()
 
 	// Tail through the access log file
+	t, err := tail.TailFile(*fileName, tail.Config{Follow: true})
+	if err != nil {
+		log.Panicf("Cannot tail file: %s", *fileName)
+	}
 	for line := range t.Lines {
 		// Make processing intentionally slower
 		time.Sleep(500 * time.Microsecond)
