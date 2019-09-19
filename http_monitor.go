@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"regexp"
@@ -14,6 +15,9 @@ import (
 
 // Timestamp format used in W3C-formatted access logs
 const strftime = "_2/Jan/2006:15:04:05 -0700"
+
+// Command-line flag to override average QPS threshold for high-traffic alerts
+var qpsThreshold = flag.Float64("qps", 10.0, "Average QPS threshold for high-traffic alerts")
 
 // Log record
 type Log struct {
@@ -103,9 +107,9 @@ func (s *stats) updateAlerting(log *Log) {
 		n--
 		delta = s.logsInWindow[n-1].Timestamp.Sub(s.logsInWindow[0].Timestamp).Seconds()
 	}
-	// Alert if QPS > 10.0 qps
+	// Alert if QPS > average QPS threshold
 	if qps, err := s.getQueryRate(); err == nil {
-		s.alerting = (qps > 10.0)
+		s.alerting = (qps > *qpsThreshold)
 	}
 }
 
@@ -175,6 +179,9 @@ func (s *stats) getQueryRate() (float64, error) {
 }
 
 func main() {
+	// Parse command-line flags
+	flag.Parse()
+
 	s := &stats{
 		sectionCounts: make(map[string]int),
 		httpResponseCodes: map[string]int{
