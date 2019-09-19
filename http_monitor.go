@@ -98,17 +98,21 @@ func parseLogLine(s string) (*Log, error) {
 	}, nil
 }
 
+// Compute the delta (time difference in seconds) between first and last
+// log record inside the existing window
+func (s *stats) getDelta() float64 {
+	n := len(s.logsInWindow)
+	return s.logsInWindow[n-1].Timestamp.Sub(s.logsInWindow[0].Timestamp).Seconds()
+}
+
 // Update stats used to trigger high-traffic alerting
 func (s *stats) updateAlerting(log *Log) {
 	s.logsInWindow = append(s.logsInWindow, log)
 
-	n := len(s.logsInWindow)
-	var delta float64
-	for delta = s.logsInWindow[n-1].Timestamp.Sub(s.logsInWindow[0].Timestamp).Seconds(); n > 0 && delta > 120.0; {
+	for len(s.logsInWindow) > 0 && s.getDelta() > 120.0 {
 		s.logsInWindow = s.logsInWindow[1:]
-		n--
-		delta = s.logsInWindow[n-1].Timestamp.Sub(s.logsInWindow[0].Timestamp).Seconds()
 	}
+
 	// Alert if QPS > average QPS threshold
 	if qps, err := s.getQueryRate(); err == nil {
 		s.alerting = (qps > *qpsThreshold)
