@@ -106,7 +106,12 @@ func parseLogLine(s string) (*logRecord, error) {
 // log record inside the existing window
 func (s *stats) getDelta() float64 {
 	n := len(s.logsInWindow)
-	return s.logsInWindow[n-1].Timestamp.Sub(s.logsInWindow[0].Timestamp).Seconds()
+	if n > 0 {
+		start := s.logsInWindow[0]
+		end := s.logsInWindow[n-1]
+		return end.Timestamp.Sub(start.Timestamp).Seconds()
+	}
+	return 0.0
 }
 
 // Update stats used to trigger high-traffic alerting
