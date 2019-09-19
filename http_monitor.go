@@ -29,6 +29,7 @@ type Log struct {
 	Size       int
 }
 
+// Internal stats
 type stats struct {
 	httpResponseCodes map[string]int // Keeps counters for each HTTP response code
 	sectionCounts     map[string]int // Keeps counters for each seen section
@@ -36,6 +37,7 @@ type stats struct {
 	alerting          bool           // Currently alerting?
 }
 
+// Regular expression for matching (and parsing) W3C-formatted access logs
 var logLineRegExp = regexp.MustCompile(`([^ ]+) (-) ([0-9A-Za-z-]+) ` +
 	// Timestamp
 	`\[(\d{2}/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/\d{4}:\d{2}:\d{2}:\d{2} [+-]\d{4})\]` +
@@ -52,6 +54,7 @@ var logLineRegExp = regexp.MustCompile(`([^ ]+) (-) ([0-9A-Za-z-]+) ` +
 	// Size
 	`([0-9-]+)`)
 
+// Parse a W3C-formatted access log
 func parseLogLine(s string) (*Log, error) {
 	var ts time.Time
 	var err error
