@@ -4,10 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
 	"sync"
+	"text/tabwriter"
 	"time"
 
 	"github.com/hpcloud/tail"
@@ -125,13 +127,16 @@ func (s *stats) updateStats(log *Log) {
 
 // Dump stats to standard output
 func (s *stats) dumpStats() {
-	fmt.Println("---")
-	dumpResponseCodes(s)
-	dumpTopSections(s, 5)
+	var w = new(tabwriter.Writer)
+	w.Init(os.Stdout, 8, 0, 1, ' ', tabwriter.AlignRight)
+	s.dumpResponseCodes(w)
+	w.Flush()
+	s.dumpTopSections(w, 5)
+	fmt.Fprint(w, "---\n")
 }
 
 // Dump HTTP response codes to standard output
-func dumpResponseCodes(s *stats) {
+func (s *stats) dumpResponseCodes(w *tabwriter.Writer) {
 	fmt.Printf("Response codes:\n")
 
 	var keys []string
@@ -141,12 +146,13 @@ func dumpResponseCodes(s *stats) {
 	sort.Strings(keys)
 
 	for _, k := range keys {
-		fmt.Printf("%10d (%s)\n", s.httpResponseCodes[k], k)
+		fmt.Fprintf(w, "%d\t(HTTP/%s)\t", s.httpResponseCodes[k], k)
 	}
+	fmt.Fprintln(w)
 }
 
 // Dumps the top N sections to standard output
-func dumpTopSections(s *stats, n int) {
+func (s *stats) dumpTopSections(w *tabwriter.Writer, n int) {
 	type sectionCountPair struct {
 		count   int
 		section string
@@ -159,12 +165,12 @@ func dumpTopSections(s *stats, n int) {
 	sort.Slice(counts, func(i, j int) bool {
 		return counts[i].count > counts[j].count
 	})
-	fmt.Printf("Top %d sections:\n", n)
+	fmt.Fprintf(w, "Top %d sections:\n", n)
 	for i, v := range counts {
 		if i >= n {
 			break
 		}
-		fmt.Printf("%10d (%s)\n", v.count, v.section)
+		fmt.Fprintf(w, "%d\t %s\n", v.count, v.section)
 	}
 }
 
