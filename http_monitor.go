@@ -30,11 +30,10 @@ type Log struct {
 }
 
 type stats struct {
-	// Key is the HTTP Response/Status Code, typically collapsed into
-	// `1XX`, `2XX`, `3XX`, etc. to produce a less, more compact and
-	// meaningful map.
-	httpResponseCodes map[string]int
-	sectionCounts     map[string]int
+	httpResponseCodes map[string]int // Keeps counters for each HTTP response code
+	sectionCounts     map[string]int // Keeps counters for each seen section
+	logsInWindow      []*Log         // Stores last seen records in the high-traffic alerting window
+	alerting          bool           // Currently alerting?
 }
 
 var logLineRegExp = regexp.MustCompile(`([^ ]+) (-) ([0-9A-Za-z-]+) ` +
@@ -90,17 +89,35 @@ func parseLogLine(s string) (*Log, error) {
 	}, nil
 }
 
+// Update stats used to trigger high-traffic alerting
+func (s *stats) updateAlerting(log *Log) {
+	s.logsInWindow = append(s.logsInWindow, log)
+
+	n := len(s.logsInWindow)
+	var delta float64
+	for delta = s.logsInWindow[n-1].Timestamp.Sub(s.logsInWindow[0].Timestamp).Seconds(); n > 0 && delta > 120.0; {
+		s.logsInWindow = s.logsInWindow[1:]
+		n--
+		delta = s.logsInWindow[n-1].Timestamp.Sub(s.logsInWindow[0].Timestamp).Seconds()
+	}
+	// Alert if QPS > 10.0 qps
+	if qps, err := s.getQueryRate(); err == nil {
+		s.alerting = (qps > 10.0)
+	}
+}
+
 // Update stats
-func updateStats(s *stats, log *Log) {
+func (s *stats) updateStats(log *Log) {
 	// Generate a 1XX, 2XX, 3XX, 4XX or 5XX string from the response code
 	responseCode := fmt.Sprintf("%d", log.StatusCode)
 	responseCode = fmt.Sprintf("%cXX", responseCode[0])
 	s.httpResponseCodes[responseCode]++
 	s.sectionCounts[log.Section]++
+	s.updateAlerting(log)
 }
 
 // Dump stats to standard output
-func dumpStats(s *stats) {
+func (s *stats) dumpStats() {
 	fmt.Println("---")
 	dumpResponseCodes(s)
 	dumpTopSections(s, 5)
@@ -144,6 +161,16 @@ func dumpTopSections(s *stats, n int) {
 	}
 }
 
+// Compute average query rate (qps)
+func (s *stats) getQueryRate() (float64, error) {
+	n := len(s.logsInWindow)
+	if n > 0 {
+		delta := s.logsInWindow[n-1].Timestamp.Sub(s.logsInWindow[0].Timestamp).Seconds()
+		return float64(n) / delta, nil
+	}
+	return 0.0, fmt.Errorf("Logs window is empty")
+}
+
 func main() {
 	s := &stats{
 		sectionCounts: make(map[string]int),
@@ -164,9 +191,20 @@ func main() {
 	}
 
 	go func() {
+		alerting := s.alerting
 		for {
 			mutex.Lock()
-			dumpStats(s)
+
+			s.dumpStats()
+			// Display changes in high-traffic alerting
+			if alerting && !s.alerting {
+				fmt.Printf("High-traffic alerting not firing anymore\n")
+			}
+			if !alerting && s.alerting {
+				qps, _ := s.getQueryRate()
+				fmt.Printf("High-traffic alerting is firing at %f queries per second on average\n", qps)
+			}
+
 			mutex.Unlock()
 			time.Sleep(10 * time.Second)
 		}
@@ -181,7 +219,7 @@ func main() {
 			panic(err)
 		}
 		mutex.Lock()
-		updateStats(s, parsedLog)
+		s.updateStats(parsedLog)
 		mutex.Unlock()
 	}
 }

@@ -54,3 +54,98 @@ func TestParseLogLine(t *testing.T) {
 		}
 	}
 }
+
+// Test behaviour when QPS goes under the threshold
+func TestUpdateAlertingSlow(t *testing.T) {
+	s := &stats{}
+
+	s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 10, 00, 00, 0, time.UTC)})
+	s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 10, 01, 00, 0, time.UTC)})
+	s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 10, 02, 00, 0, time.UTC)})
+	s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 10, 03, 00, 0, time.UTC)})
+	s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 10, 04, 00, 0, time.UTC)})
+
+	qps, err := s.getQueryRate()
+	if err != nil {
+		t.Error(err)
+	}
+	if qps != 0.025 {
+		t.Errorf("Expected QPS of 0.025 != %f", qps)
+	}
+	if s.alerting {
+		t.Errorf("Unexpected alerting triggered")
+	}
+}
+
+// Test behaviour when QPS goes over the threshold
+func TestUpdateAlertingFast(t *testing.T) {
+	s := &stats{}
+
+	s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 10, 04, 1, 0, time.UTC)})
+	for i := 0; i < 20; i++ {
+		s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 10, 04, 2, 0, time.UTC)})
+	}
+
+	qps, err := s.getQueryRate()
+	if err != nil {
+		t.Error(err)
+	}
+	if qps != 21.0 {
+		t.Errorf("Expected QPS of 0.025 != %f", qps)
+	}
+	if !s.alerting {
+		t.Errorf("Expected alerting to be triggered")
+	}
+}
+
+// Test behaviour when no logs have been processed
+func TestUpdateAlertingEmpty(t *testing.T) {
+	s := &stats{}
+
+	_, err := s.getQueryRate()
+	if err == nil {
+		t.Errorf("Expected error when logs window is empty")
+	}
+	if s.alerting {
+		t.Errorf("Unexpected alerting triggered")
+	}
+}
+
+// Test alerting condition is able to flap between not alerting, alerting, and back
+// to not alerting
+func TestUpdateAlertinFlap(t *testing.T) {
+	s := &stats{}
+
+	s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 10, 00, 00, 0, time.UTC)})
+	s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 10, 01, 00, 0, time.UTC)})
+	s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 10, 02, 00, 0, time.UTC)})
+	s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 10, 03, 00, 0, time.UTC)})
+	s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 10, 04, 00, 0, time.UTC)})
+	if s.alerting {
+		t.Errorf("Unexpected alerting triggered")
+	}
+
+	// Makes average QPS go exactly at 10.0 (62 seconds elapsed between first and last request
+	// for a total of 620 requests)
+	s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 10, 05, 1, 0, time.UTC)})
+	for i := 0; i < 618; i++ {
+		s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 10, 05, 2, 0, time.UTC)})
+	}
+	if s.alerting {
+		t.Errorf("Unexpected alerting triggered")
+	}
+
+	// Makes average QPS go above 10.0
+	s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 10, 05, 2, 0, time.UTC)})
+	if !s.alerting {
+		t.Errorf("Expected alerting to be triggered")
+	}
+
+	// Two queries arrive consecutively after 1 hour, which should yield a query rate of
+	// 2 queries per second
+	s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 11, 00, 00, 0, time.UTC)})
+	s.updateAlerting(&Log{Timestamp: time.Date(2019, 01, 01, 11, 00, 01, 0, time.UTC)})
+	if s.alerting {
+		t.Errorf("Unexpected alerting triggered")
+	}
+}
