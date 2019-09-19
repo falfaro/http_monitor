@@ -252,11 +252,9 @@ func main() {
 		log.Panicf("Cannot tail file: %s", *fileName)
 	}
 	for line := range t.Lines {
-		// Make processing intentionally slower
-		time.Sleep(500 * time.Microsecond)
 		parsedLog, err := parseLogLine(line.Text)
 		if err != nil {
-			panic(err)
+			log.Panicf("Cannot parse log line: %s", line.Text)
 		}
 		mutex.Lock()
 		s.updateStats(parsedLog)
