@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"regexp"
 	"sort"
@@ -199,7 +200,7 @@ func (s *stats) getQueryRate() (float64, error) {
 		delta := s.logsInWindow[n-1].Timestamp.Sub(s.logsInWindow[0].Timestamp).Seconds()
 		return float64(n) / delta, nil
 	}
-	return 0.0, fmt.Errorf("Logs window is empty")
+	return math.Inf(1), fmt.Errorf("Logs window is empty")
 }
 
 func main() {
