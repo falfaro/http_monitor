@@ -21,6 +21,9 @@ const strftime = "_2/Jan/2006:15:04:05 -0700"
 // Command-line flag to override average QPS threshold for high-traffic alerts
 var qpsThreshold = flag.Float64("qps", 10.0, "Average QPS threshold for high-traffic alerts")
 
+// Command-line flag to override N when printing top(N) sections
+var topN = flag.Int("top", 5, "Dump top N sections")
+
 // Log record
 type logRecord struct {
 	IP         string
@@ -145,9 +148,9 @@ func (s *stats) dumpStats() {
 	var w = new(tabwriter.Writer)
 	w.Init(os.Stdout, 8, 0, 1, ' ', tabwriter.AlignRight)
 	s.dumpResponseCodes(w)
-	w.Flush()
-	s.dumpTopSections(w, 5)
+	s.dumpTopSections(w, *topN)
 	fmt.Fprint(w, "---\n")
+	w.Flush()
 }
 
 // Dump HTTP response codes to standard output
